@@ -10,7 +10,7 @@ checkpoints
 ### DataSets ###
 data/dataset*/
 *.zip
-
+*.tar
 *.pdf
 
 ### DataSets ###
