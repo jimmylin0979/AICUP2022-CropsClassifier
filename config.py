@@ -6,10 +6,10 @@ class DefualtConfig(object):
     model_name = 'ViT'
     model_path = './model.pth'
     load_model = False
-    num_classes = 219
+    num_classes = 15
 
     # Model : ViT
-    pretrained_model = 'gary109/vit-base-orchid219-demo-v5'
+    pretrained_model = 'google/vit-base-patch16-224-in21k'
 
     ###################################################################
     # Training
@@ -33,7 +33,7 @@ class DefualtConfig(object):
     trainset_path = './data/dataset/train'
     testset_path = './data/dataset/test'
 
-    train_valid_split = 0.3  # ratio of valid set
+    train_valid_split = 0.2  # ratio of valid set
 
     ###################################################################
 
