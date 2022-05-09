@@ -6,6 +6,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import StepLR, ExponentialLR
+
+
 # 
 import numpy as np
 
@@ -15,11 +18,14 @@ from sklearn.model_selection import train_test_split
 #
 from tqdm import tqdm
 
+
 #
 import models
+from warmup_scheduler import GradualWarmupScheduler
 from data.dataset import OrchidDataSet
 from config import DefualtConfig
 from utils import get_confidence_score
+import warmup_scheduler
 
 ###################################################################################
 
@@ -52,8 +58,12 @@ def main(**kwargs):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
-    lambda0 = lambda cur_iter: (cur_iter / config.lr_warmup_epoch)* config.lr if  cur_iter < config.lr_warmup_epoch else config.lr
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
+    # scheduler_warmup is chained with schduler_steplr
+    scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=config.lr_warmup_epoch, after_scheduler=scheduler_steplr)
+
+    # lambda0 = lambda cur_iter: (cur_iter / config.lr_warmup_epoch)* config.lr if  cur_iter < config.lr_warmup_epoch else config.lr
+    # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
 
     # Step 4
     train_loader, valid_loader = get_loader(ds)
@@ -63,10 +73,14 @@ def main(**kwargs):
     best_epoch, best_loss = 0, 1e100
     nonImprove_epochs = 0
 
-    for epoch in tqdm(range(config.num_epochs)):
+    for epoch in range(config.num_epochs):
 
         # 
-        train_acc, train_loss = train(model, train_loader, criterion, optimizer, scheduler)
+        scheduler_warmup.step(epoch + 1)
+        print(f'Epoch {epoch}, LR = {optimizer.param_groups[0]["lr"]}')
+
+        # 
+        train_acc, train_loss = train(model, train_loader, criterion, optimizer)
         print(f"[ Train | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
         
         # 
@@ -134,7 +148,7 @@ def get_loader(ds):
     return train_loader, valid_loader
 
 
-def train(model, train_loader, criterion, optimizer, scheduler=None):
+def train(model, train_loader, criterion, optimizer):
     
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
@@ -171,8 +185,6 @@ def train(model, train_loader, criterion, optimizer, scheduler=None):
 
         # Update the parameters with computed gradients.
         optimizer.step()
-        if scheduler is not None:
-            scheduler.step()
 
         # # Clip the gradient norms for stable training.
         # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
