@@ -14,11 +14,12 @@ class DefualtConfig(object):
     ###################################################################
     # Training
     start_epoch = 0
-    num_epochs = 50
-    earlyStop_interval = 10
+    num_epochs = 10
+    earlyStop_interval = 3
 
     batch_size = 32
     lr = 2e-5
+    lr_warmup_epoch = 3
 
     ###################################################################
     # GPU Settings
@@ -33,7 +34,7 @@ class DefualtConfig(object):
     trainset_path = './data/dataset/train'
     testset_path = './data/dataset/test'
 
-    train_valid_split = 0.2  # ratio of valid set
+    train_valid_split = 0.3  # ratio of valid set
 
     ###################################################################
 

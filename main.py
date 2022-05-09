@@ -39,12 +39,24 @@ def main(**kwargs):
     writer.add_graph(model, torch.zeros((1, 3, 224, 224)).to(device))
     writer.flush()
 
+    # Step 3 : DataSets
+    ds = OrchidDataSet(config.trainset_path)
+
     # Step 3
+    # Deal with imbalance dataset
+    #   For the classification task, we use cross-entropy as the measurement of performance.
+    #   Since the wafer dataset is serverly imbalance, we add class weight to make it classifier better
+    class_weights = [1 - (ds.targets.count(c))/len(ds) for c in range(config.num_classes)]
+    class_weights = torch.FloatTensor(class_weights).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
-    criterion = nn.CrossEntropyLoss()
+
+    lambda0 = lambda cur_iter: (cur_iter / config.lr_warmup_epoch)* config.lr if  cur_iter < config.lr_warmup_epoch else config.lr
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
 
     # Step 4
-    train_loader, valid_loader = get_loader()
+    train_loader, valid_loader = get_loader(ds)
 
     # Step 5
     history = {'train_acc' : [], 'train_loss' : [], 'valid_acc' : [], 'valid_loss' : []}
@@ -54,7 +66,7 @@ def main(**kwargs):
     for epoch in tqdm(range(config.num_epochs)):
 
         # 
-        train_acc, train_loss = train(model, train_loader, criterion, optimizer)
+        train_acc, train_loss = train(model, train_loader, criterion, optimizer, scheduler)
         print(f"[ Train | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
         
         # 
@@ -96,10 +108,7 @@ def main(**kwargs):
 
 ###################################################################################
 
-def get_loader():
-
-    # DataSets
-    ds = OrchidDataSet(config.trainset_path)
+def get_loader(ds):
 
     # Split the train/test with each class should appear on both train/test dataset
     valid_split = config.train_valid_split
@@ -125,7 +134,7 @@ def get_loader():
     return train_loader, valid_loader
 
 
-def train(model, train_loader, criterion, optimizer):
+def train(model, train_loader, criterion, optimizer, scheduler=None):
     
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
@@ -152,16 +161,18 @@ def train(model, train_loader, criterion, optimizer):
         # Compute the gradients for parameters.
         loss.backward()
 
-        # STN : Allow transformes to do like translation, cropping, isotropic scaling but rotation
-        #           , with a intention to let STN learns where to focus on instead of how to transform the image.
-        # Below is what matrix should look like : 
-        #    [ x_ratio, 0 ] [offset_X]
-        #    [ 0, y_ratio ] [offset_y]
-        model.fc_loc[-1].weight.grad[1].zero_()
-        model.fc_loc[-1].weight.grad[3].zero_()
+        # # STN : Allow transformes to do like translation, cropping, isotropic scaling but rotation
+        # #           , with a intention to let STN learns where to focus on instead of how to transform the image.
+        # # Below is what matrix should look like : 
+        # #    [ x_ratio, 0 ] [offset_X]
+        # #    [ 0, y_ratio ] [offset_y]
+        # model.fc_loc[-1].weight.grad[1].zero_()
+        # model.fc_loc[-1].weight.grad[3].zero_()
 
         # Update the parameters with computed gradients.
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()
 
         # # Clip the gradient norms for stable training.
         # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)

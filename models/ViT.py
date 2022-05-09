@@ -110,8 +110,8 @@ class ViT(nn.Module):
         # Feature extraction
         x = self.feature_extract(x)
 
-        # Spatial Transformer
-        x = self.stn(x)
+        # # Spatial Transformer
+        # x = self.stn(x)
 
         # ViT
         x = self.vit(pixel_values=x)
