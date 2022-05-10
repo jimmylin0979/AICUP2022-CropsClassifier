@@ -57,10 +57,12 @@ def main(**kwargs):
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
 
     # scheduler_warmup is chained with schduler_steplr
     scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.1)
-    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=config.lr_warmup_epoch, after_scheduler=scheduler_steplr)
+    if config.lr_warmup_epoch > 0:
+        scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=config.lr_warmup_epoch, after_scheduler=scheduler_steplr)
 
     # lambda0 = lambda cur_iter: (cur_iter / config.lr_warmup_epoch)* config.lr if  cur_iter < config.lr_warmup_epoch else config.lr
     # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
@@ -76,8 +78,9 @@ def main(**kwargs):
     for epoch in range(config.num_epochs):
 
         # 
-        scheduler_warmup.step(epoch + 1)
-        print(f'Epoch {epoch}, LR = {optimizer.param_groups[0]["lr"]}')
+        if config.lr_warmup_epoch > 0:
+            scheduler_warmup.step(epoch + 1)
+            print(f'Epoch {epoch}, LR = {optimizer.param_groups[0]["lr"]}')
 
         # 
         train_acc, train_loss = train(model, train_loader, criterion, optimizer)
@@ -131,6 +134,7 @@ def get_loader(ds):
     train_indices, valid_indices = train_test_split(
         indices, test_size=valid_split, stratify=ds.targets)
 
+    # TODO : Will subset have transformation defined in original dataset ? 
     # Creating sub dataset from valid indices
     # Do not shuffle valid dataset, let the image in order
     valid_indices.sort()

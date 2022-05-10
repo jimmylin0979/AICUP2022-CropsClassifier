@@ -14,7 +14,7 @@ class OrchidDataSet(ImageFolder):
 
         # Data Augumentation
         self.transform_set = [
-            # transforms.RandomCrop(),
+            transforms.RandomResizedCrop((224)),
             transforms.ColorJitter(brightness=0.5, contrast=0.5),
             transforms.RandomHorizontalFlip(p=0.5),
         ]
@@ -22,10 +22,10 @@ class OrchidDataSet(ImageFolder):
         self.transform = transforms.Compose([
             # transforms.Grayscale(num_output_channels=3),
 
-            # # Reorder transform randomly
-            # transforms.RandomOrder(self.transform_set),
+            # Reorder transform randomly
+            transforms.RandomOrder(self.transform_set),
 
-            transforms.RandAugment(),
+            # transforms.RandAugment(),
 
             # Resize the image into a fixed shape
             transforms.Resize((224, 224)),
