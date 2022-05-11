@@ -25,7 +25,6 @@ from warmup_scheduler import GradualWarmupScheduler
 from data.dataset import OrchidDataSet
 from config import DefualtConfig
 from utils import get_confidence_score
-import warmup_scheduler
 
 ###################################################################################
 
@@ -60,7 +59,7 @@ def main(**kwargs):
     # optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
 
     # scheduler_warmup is chained with schduler_steplr
-    scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler_steplr = StepLR(optimizer, step_size=2, gamma=0.1)
     if config.lr_warmup_epoch > 0:
         scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=config.lr_warmup_epoch, after_scheduler=scheduler_steplr)
 

@@ -6,10 +6,10 @@ class DefualtConfig(object):
     model_name = 'ViT'
     model_path = './model.pth'
     load_model = False
-    num_classes = 15
+    num_classes = 14
 
     # Model : ViT
-    pretrained_model = 'google/vit-base-patch16-224-in21k'
+    pretrained_model = 'gary109/crop14-small_ft_vit-base-patch16-224-in21k'
 
     ###################################################################
     # Training
@@ -17,9 +17,9 @@ class DefualtConfig(object):
     num_epochs = 10
     earlyStop_interval = 3
 
-    batch_size = 32
+    batch_size = 16
     lr = 2e-5
-    lr_warmup_epoch = 5
+    lr_warmup_epoch = 2
 
     ###################################################################
     # GPU Settings
