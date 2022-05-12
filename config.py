@@ -14,12 +14,12 @@ class DefualtConfig(object):
     ###################################################################
     # Training
     start_epoch = 0
-    num_epochs = 10
+    num_epochs = 15
     earlyStop_interval = 3
 
     batch_size = 16
     lr = 2e-5
-    lr_warmup_epoch = 2
+    lr_warmup_epoch = 5
 
     ###################################################################
     # GPU Settings

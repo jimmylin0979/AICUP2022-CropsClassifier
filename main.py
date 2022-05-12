@@ -4,10 +4,12 @@ import fire
 #
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import StepLR, ExponentialLR
 
+#
+from torch_ema import ExponentialMovingAverage
 
 # 
 import numpy as np
@@ -18,13 +20,14 @@ from sklearn.model_selection import train_test_split
 #
 from tqdm import tqdm
 
-
 #
 import models
-from warmup_scheduler import GradualWarmupScheduler
 from data.dataset import OrchidDataSet
 from config import DefualtConfig
 from utils import get_confidence_score
+from utils.losses import LabelSmoothingCrossEntropy
+from utils.pseudo_label import get_pseudo_labels
+from utils.scheduler import GradualWarmupScheduler
 
 ###################################################################################
 
@@ -53,10 +56,13 @@ def main(**kwargs):
     #   Since the wafer dataset is serverly imbalance, we add class weight to make it classifier better
     class_weights = [1 - (ds.targets.count(c))/len(ds) for c in range(config.num_classes)]
     class_weights = torch.FloatTensor(class_weights).to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+    # criterion = LabelSmoothingCrossEntropy()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
+
+    ema = ExponentialMovingAverage(model.parameters(), decay=0.995)
 
     # scheduler_warmup is chained with schduler_steplr
     scheduler_steplr = StepLR(optimizer, step_size=2, gamma=0.1)
@@ -67,12 +73,15 @@ def main(**kwargs):
     # scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda0)
 
     # Step 4
-    train_loader, valid_loader = get_loader(ds)
+    # train_loader, valid_loader = get_loader(ds)
+    ds_train, ds_valid = get_train_valid_ds(ds)
 
     # Step 5
     history = {'train_acc' : [], 'train_loss' : [], 'valid_acc' : [], 'valid_loss' : []}
     best_epoch, best_loss = 0, 1e100
     nonImprove_epochs = 0
+
+    do_semi = False
 
     for epoch in range(config.num_epochs):
 
@@ -82,11 +91,31 @@ def main(**kwargs):
             print(f'Epoch {epoch}, LR = {optimizer.param_groups[0]["lr"]}')
 
         # 
-        train_acc, train_loss = train(model, train_loader, criterion, optimizer)
+        if do_semi:
+            # # use line_profiler to analyze the bottleneck
+            # lprofiler = LineProfiler(get_pseudo_labels)
+            # pseudo_set = lprofiler.runcall(get_pseudo_labels, unlabeled_set, model)
+            # lprofiler.print_stats()
+
+            # Obtain pseudo-labels for unlabeled data using trained model.
+            pseudo_set = get_pseudo_labels(model, ds_valid)
+
+            if pseudo_set != None:
+                # Construct a new dataset and a data loader for training.
+                # This is used in semi-supervised learning only.
+                concat_dataset = ConcatDataset([ds_train, pseudo_set])
+                train_loader = DataLoader(concat_dataset, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
+
+        # 
+        train_loader = DataLoader(ds_train, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
+        valid_loader = DataLoader(ds_valid, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, pin_memory=True)
+
+        # 
+        train_acc, train_loss = train(model, train_loader, criterion, optimizer, ema)
         print(f"[ Train | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
         
         # 
-        valid_acc, valid_loss = valid(model, valid_loader, criterion)
+        valid_acc, valid_loss = valid(model, valid_loader, criterion. ema)
         print(f"[ Valid | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
         
         # Append the training statstics into history
@@ -124,6 +153,24 @@ def main(**kwargs):
 
 ###################################################################################
 
+def get_train_valid_ds(ds):
+
+    # Split the train/test with each class should appear on both train/test dataset
+    valid_split = config.train_valid_split
+
+    indices = list(range(len(ds)))  # indices of the dataset
+    train_indices, valid_indices = train_test_split(
+        indices, test_size=valid_split, stratify=ds.targets)
+    
+    # Creating sub dataset from valid indices
+    # Do not shuffle valid dataset, let the image in order
+    valid_indices.sort()
+    ds_valid = torch.utils.data.Subset(ds, valid_indices)
+
+    ds_train = torch.utils.data.Subset(ds, train_indices)
+
+    return ds_train, ds_valid
+
 def get_loader(ds):
 
     # Split the train/test with each class should appear on both train/test dataset
@@ -151,7 +198,7 @@ def get_loader(ds):
     return train_loader, valid_loader
 
 
-def train(model, train_loader, criterion, optimizer):
+def train(model, train_loader, criterion, optimizer, ema):
     
     # ---------- Training ----------
     # Make sure the model is in train mode before training.
@@ -188,6 +235,7 @@ def train(model, train_loader, criterion, optimizer):
 
         # Update the parameters with computed gradients.
         optimizer.step()
+        ema.update()
 
         # # Clip the gradient norms for stable training.
         # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
@@ -197,27 +245,29 @@ def train(model, train_loader, criterion, optimizer):
 
     return acc.item(), loss.item()
 
-def valid(model, valid_loader, criterion):
+def valid(model, valid_loader, criterion, ema):
     # ---------- Validation ----------
     # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
     model.eval()
 
-    # Iterate the validation set by batches.
-    for batch in tqdm(valid_loader):
+    with ema.average_parameters():
 
-        # A batch consists of image data and corresponding labels.
-        imgs, labels = batch
+        # Iterate the validation set by batches.
+        for batch in tqdm(valid_loader):
 
-        # We don't need gradient in validation.
-        # Using torch.no_grad() accelerates the forward process.
-        with torch.no_grad():
-            logits = model(imgs.to(device))
+            # A batch consists of image data and corresponding labels.
+            imgs, labels = batch
 
-        # We can still compute the loss (but not the gradient).
-        loss = criterion(logits, labels.to(device))
+            # We don't need gradient in validation.
+            # Using torch.no_grad() accelerates the forward process.
+            with torch.no_grad():
+                logits = model(imgs.to(device))
 
-        # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+            # We can still compute the loss (but not the gradient).
+            loss = criterion(logits, labels.to(device))
+
+            # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
 
     return acc.item(), loss.item()
 
