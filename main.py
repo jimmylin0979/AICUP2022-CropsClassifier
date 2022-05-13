@@ -68,7 +68,7 @@ def main(**kwargs):
     # optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
 
     ema = ExponentialMovingAverage(model.parameters(), decay=0.995)
-    if config.ema_path != '':
+    if config.load_model:
         ema = ema.load_state_dict(torch.load(config.ema_path))
 
     # scheduler_warmup is chained with schduler_steplr
