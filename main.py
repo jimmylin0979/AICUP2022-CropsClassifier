@@ -68,6 +68,8 @@ def main(**kwargs):
     # optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
 
     ema = ExponentialMovingAverage(model.parameters(), decay=0.995)
+    if config.ema_path != '':
+        ema = ema.load_state_dict(torch.load(config.ema_path))
 
     # scheduler_warmup is chained with schduler_steplr
     scheduler_steplr = StepLR(optimizer, step_size=2, gamma=0.1)
@@ -144,6 +146,7 @@ def main(**kwargs):
             best_loss = valid_loss
             best_epoch = epoch
             torch.save(model.state_dict(), config.model_path)
+            torch.save(ema.state_dict(), config.ema_path)
             print(f'Saving model with loss {valid_loss:.4f}'.format(valid_loss))
             nonImprove_epochs = 0
         else:
@@ -315,6 +318,9 @@ def test(output_file_path='predictions.csv'):
     model.to(device)
     model.load_state_dict(torch.load(config.model_path, map_location=device))
 
+    ema = ExponentialMovingAverage(model.parameters(), decay=0.995)
+    ema = ema.load_state_dict(torch.load(config.ema_path))
+
     # Step 2 : DataSet & DataLoader
     ds_test = OrchidDataSet(config.testset_path)
     test_loader = DataLoader(ds_test, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers)
@@ -327,18 +333,20 @@ def test(output_file_path='predictions.csv'):
     # Initialize a list to store the predictions.
     predictions = []
 
-    # Iterate the validation set by batches.
-    for batch in tqdm(test_loader):
+    with ema.average_parameters():
 
-        # A batch consists of image data and corresponding labels.
-        imgs, _ = batch
+        # Iterate the validation set by batches.
+        for batch in tqdm(test_loader):
 
-        # We don't need gradient in validation.
-        # Using torch.no_grad() accelerates the forward process.
-        with torch.no_grad():
-            logits = model(imgs.to(device))
+            # A batch consists of image data and corresponding labels.
+            imgs, _ = batch
 
-        predictions += logits.argmax(dim=-1)
+            # We don't need gradient in validation.
+            # Using torch.no_grad() accelerates the forward process.
+            with torch.no_grad():
+                logits = model(imgs.to(device))
+
+            predictions += logits.argmax(dim=-1)
 
     # 
     map_from_prediction2Label = ['banana', 'bareland', 'carrot', 'corn', 'dragonfruit', 'garlic', 'guava', 'peanut', 'pineapple', 'pumpkin', 'rice', 'soybean', 'sugarcane', 'tomato', 'inundated']

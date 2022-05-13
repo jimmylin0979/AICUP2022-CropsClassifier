@@ -5,6 +5,7 @@ class DefualtConfig(object):
     # Model
     model_name = 'ViT'
     model_path = './model.pth'
+    ema_path = './ema.pth'
     load_model = False
     num_classes = 14
 
@@ -14,8 +15,8 @@ class DefualtConfig(object):
     ###################################################################
     # Training
     start_epoch = 0
-    num_epochs = 15
-    earlyStop_interval = 3
+    num_epochs = 20
+    earlyStop_interval = 5
 
     batch_size = 32
     lr = 2e-5
