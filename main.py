@@ -86,7 +86,7 @@ def main(**kwargs):
     best_epoch, best_loss = 0, 1e100
     nonImprove_epochs = 0
 
-    do_semi = False
+    do_semi = True
 
     for epoch in range(config.start_epoch, config.start_epoch + config.num_epochs):
 
@@ -96,6 +96,7 @@ def main(**kwargs):
             print(f'Epoch {epoch}, LR = {optimizer.param_groups[0]["lr"]}')
 
         # 
+        train_loader = DataLoader(ds_train, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
         if do_semi:
             # # use line_profiler to analyze the bottleneck
             # lprofiler = LineProfiler(get_pseudo_labels)
@@ -103,6 +104,7 @@ def main(**kwargs):
             # lprofiler.print_stats()
 
             # Obtain pseudo-labels for unlabeled data using trained model.
+            print(f"[ Train | Start pseudo labeling]")
             pseudo_set = get_pseudo_labels(model, ds_valid)
 
             if pseudo_set != None:
@@ -110,9 +112,10 @@ def main(**kwargs):
                 # This is used in semi-supervised learning only.
                 concat_dataset = ConcatDataset([ds_train, pseudo_set])
                 train_loader = DataLoader(concat_dataset, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
-
-        # 
-        train_loader = DataLoader(ds_train, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
+        else:    
+            # train_loader = DataLoader(ds_train, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True)
+            pass
+                
         valid_loader = DataLoader(ds_valid, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, pin_memory=True)
 
         # 
@@ -120,7 +123,7 @@ def main(**kwargs):
         print(f"[ Train | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
         
         # 
-        valid_acc, valid_loss = valid(model, valid_loader, criterion. ema)
+        valid_acc, valid_loss = valid(model, valid_loader, criterion, ema)
         print(f"[ Valid | {epoch + 1:03d}/{config.num_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
         
         # Append the training statstics into history
@@ -244,6 +247,30 @@ def train(model, train_loader, criterion, optimizer, ema):
 
         # # Clip the gradient norms for stable training.
         # grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
+
+        # Compute the accuracy for current batch.
+        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+    return acc.item(), loss.item()
+
+def valid(model, valid_loader, criterion):
+    # ---------- Validation ----------
+    # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
+    model.eval()
+
+    # Iterate the validation set by batches.
+    for batch in tqdm(valid_loader):
+
+        # A batch consists of image data and corresponding labels.
+        imgs, labels = batch
+
+        # We don't need gradient in validation.
+        # Using torch.no_grad() accelerates the forward process.
+        with torch.no_grad():
+            logits = model(imgs.to(device))
+
+        # We can still compute the loss (but not the gradient).
+        loss = criterion(logits, labels.to(device))
 
         # Compute the accuracy for current batch.
         acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()

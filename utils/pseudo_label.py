@@ -85,7 +85,7 @@ def get_pseudo_labels(model, *datasets, threshold=0.75):
         # to_train_y = torch.tensor(to_train_y, dtype=torch.int)
 
         # # reshape
-        to_train_x = torch.reshape(to_train_x, (-1, 3, 128, 128))
+        to_train_x = torch.reshape(to_train_x, (-1, 3, 224, 224))
         # to_train_y = torch.reshape(to_train_y, (-1,))
 
         print(to_train_x.shape)
