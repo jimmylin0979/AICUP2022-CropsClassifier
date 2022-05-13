@@ -21,6 +21,9 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 #
+import os
+
+#
 import models
 from data.dataset import OrchidDataSet
 from config import DefualtConfig
@@ -41,6 +44,8 @@ def main(**kwargs):
 
     # Step 2 : 
     model = getattr(models, config.model_name)(config)
+    if config.load_model:
+        model.load_state_dict(torch.load(config.model_path))
     model.to(device)
 
     # 
@@ -83,7 +88,7 @@ def main(**kwargs):
 
     do_semi = False
 
-    for epoch in range(config.num_epochs):
+    for epoch in range(config.start_epoch, config.start_epoch + config.num_epochs):
 
         # 
         if config.lr_warmup_epoch > 0:
@@ -308,6 +313,12 @@ def test(output_file_path='predictions.csv'):
 
         predictions += logits.argmax(dim=-1)
 
+    # 
+    map_from_prediction2Label = ['banana', 'bareland', 'carrot', 'corn', 'dragonfruit', 'garlic', 'guava', 'peanut', 'pineapple', 'pumpkin', 'rice', 'soybean', 'sugarcane', 'tomato', 'inundated']
+    # map_from_prediction2Label = ['banana', 'carrot', 'corn', 'dragonfruit', 'garlic', 'guava', 'peanut', 'pineapple', 'pumpkin', 'rice', 'soybean', 'sugarcane', 'tomato', 'bareland']
+
+    imgs_file_names = os.listdir(config.testset_path)
+
     # Step 4 : Save predictions into the file.
     with open(output_file_path, "w") as f:
 
@@ -316,7 +327,7 @@ def test(output_file_path='predictions.csv'):
 
         # For the rest of the rows, each image id corresponds to a predicted class.
         for i, pred in  enumerate(predictions):
-            f.write(f"{i},{pred}\n")
+            f.write(f"{imgs_file_names[i]},{map_from_prediction2Label[pred]}\n")
 
 ###################################################################################
 

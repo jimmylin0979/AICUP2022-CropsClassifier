@@ -9,7 +9,7 @@ class DefualtConfig(object):
     num_classes = 14
 
     # Model : ViT
-    pretrained_model = 'gary109/crop14-small_ft_vit-base-patch16-224-in21k'
+    pretrained_model = 'google/vit-base-patch16-224-in21k'
 
     ###################################################################
     # Training
