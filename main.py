@@ -380,11 +380,13 @@ if __name__ == '__main__':
 
     # # args = parser.parse_args()
 
-    #
-    fire.Fire({
-        'main' : main, 
-        'test' : test
-    })
+    # #
+    # fire.Fire({
+    #     'main' : main, 
+    #     'test' : test
+    # })
+
+    main()
 
     # Train model via command below : 
     #       python main.py main --visualization=True
